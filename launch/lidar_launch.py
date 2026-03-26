@@ -3,7 +3,7 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     return LaunchDescription([
-        # 1. RPLidar A1M8 공식 드라이버 실행 (rplidar_ros 패키지 사용)
+        # 1. RPLidar A1M8 드라이버 (rplidar_ros 패키지의 rplidar_node 실행)
         Node(
             package='rplidar_ros',
             executable='rplidar_node',
@@ -19,7 +19,7 @@ def generate_launch_description():
             output='screen'
         ),
 
-        # 2. IMU 노드 실행 (smart_cart_project 패키지)
+        # 2. IMU 노드
         Node(
             package='smart_cart_project',
             executable='imu_node',
@@ -27,15 +27,15 @@ def generate_launch_description():
             output='screen',
         ),
 
-        # 3. 초음파 센서 노드 실행 (추가됨!)
+        # 3. 초음파 센서 노드
         Node(
             package='smart_cart_project',
             executable='ultrasonic_node',
             name='ultrasonic_node',
             output='screen',
         ),
-        
-        # 4. 제어 타워(두뇌) 노드 실행
+
+        # 4. 제어 타워 (final_cart)
         Node(
             package='smart_cart_project',
             executable='final_cart',
