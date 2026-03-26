@@ -3,17 +3,43 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     return LaunchDescription([
+        # 1. RPLidar A1M8 공식 드라이버 실행 (rplidar_ros 패키지 사용)
         Node(
-            package='smart_cart_project',
-            executable='lidar_node',
-            name='lidar_node',
-            output='screen',
-            parameters=[{'port': '/dev/ttyUSB0', 'frame_id': 'laser_frame'}]
+            package='rplidar_ros',
+            executable='rplidar_node',
+            name='rplidar_node',
+            parameters=[{
+                'channel_type': 'serial',
+                'serial_port': '/dev/ttyUSB0',
+                'serial_baudrate': 115200,
+                'frame_id': 'laser_frame',
+                'inverted': False,
+                'angle_compensate': True,
+            }],
+            output='screen'
         ),
+
+        # 2. IMU 노드 실행 (smart_cart_project 패키지)
         Node(
             package='smart_cart_project',
             executable='imu_node',
             name='imu_node',
             output='screen',
         ),
+
+        # 3. 초음파 센서 노드 실행 (추가됨!)
+        Node(
+            package='smart_cart_project',
+            executable='ultrasonic_node',
+            name='ultrasonic_node',
+            output='screen',
+        ),
+        
+        # 4. 제어 타워(두뇌) 노드 실행
+        Node(
+            package='smart_cart_project',
+            executable='final_cart',
+            name='final_cart',
+            output='screen',
+        )
     ])
