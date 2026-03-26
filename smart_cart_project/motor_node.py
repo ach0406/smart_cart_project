@@ -1,60 +1,63 @@
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
-import RPi.GPIO as GPIO
-import time
+from gpiozero import PWMOutputDevice, DigitalOutputDevice
 
 class MotorNode(Node):
     def __init__(self):
         super().__init__('motor_node')
-        self.subscription = self.create_subscription(Twist, '/cmd_vel', self.cmd_vel_callback, 10)
         
-        # [Step 4] 물리 핀 -> BCM 번호 매핑 완료
-        self.STBY_PIN = 25  # 물리 22번
+        # --- 핀 설정 (창현님 핀맵 기반 BCM 번호) ---
+        # STBY (공통)
+        self.stby = DigitalOutputDevice(25) # 물리 22
+        self.stby.on()
 
-        # 드라이버 1 (앞바퀴) - 물리 12, 16, 18 / 33, 13, 15
-        self.FL_PWM, self.FL_IN1, self.FL_IN2 = 18, 23, 24
-        self.FR_PWM, self.FR_IN1, self.FR_IN2 = 13, 27, 22
+        # [TB6612 #1 - 앞바퀴]
+        self.front_left_pwm = PWMOutputDevice(18) # 물리 12
+        self.front_left_in1 = DigitalOutputDevice(23) # 물리 16
+        self.front_left_in2 = DigitalOutputDevice(24) # 물리 18
         
-        # 드라이버 2 (뒷바퀴) - 물리 32, 36, 38 / 35, 37, 40
-        self.RL_PWM, self.RL_IN1, self.RL_IN2 = 12, 16, 20
-        self.RR_PWM, self.RR_IN1, self.RR_IN2 = 19, 26, 21
+        self.front_right_pwm = PWMOutputDevice(13) # 물리 33
+        self.front_right_in1 = DigitalOutputDevice(27) # 물리 13
+        self.front_right_in2 = DigitalOutputDevice(22) # 물리 15
 
-        GPIO.setmode(GPIO.BCM)
-        pins = [self.STBY_PIN, self.FL_PWM, self.FL_IN1, self.FL_IN2, self.FR_PWM, self.FR_IN1, self.FR_IN2,
-                self.RL_PWM, self.RL_IN1, self.RL_IN2, self.RR_PWM, self.RR_IN1, self.RR_IN2]
-        for pin in pins: GPIO.setup(pin, GPIO.OUT)
+        # [TB6612 #2 - 뒷바퀴]
+        self.back_left_pwm = PWMOutputDevice(12) # 물리 32
+        self.back_left_in1 = DigitalOutputDevice(16) # 물리 36
+        self.back_left_in2 = DigitalOutputDevice(20) # 물리 38
+
+        self.back_right_pwm = PWMOutputDevice(19) # 물리 35
+        self.back_right_in1 = DigitalOutputDevice(26) # 물리 37
+        self.back_right_in2 = DigitalOutputDevice(21) # 물리 40
+
+        self.subscription = self.create_subscription(Twist, '/cmd_vel', self.cmd_callback, 10)
+        self.get_logger().info('🚀 4WD TB6612FNG 시스템 준비 완료!')
+
+    def cmd_callback(self, msg):
+        # 차동 주행 계산 (Differential Drive)
+        left_speed = msg.linear.x - msg.angular.z
+        right_speed = msg.linear.x + msg.angular.z
+
+        # 앞/뒤 왼쪽 모터 제어
+        self.set_motor(self.front_left_pwm, self.front_left_in1, self.front_left_in2, left_speed)
+        self.set_motor(self.back_left_pwm, self.back_left_in1, self.back_left_in2, left_speed)
         
-        GPIO.output(self.STBY_PIN, True) # 모터 드라이버 활성화
-        
-        self.pwm_fl = GPIO.PWM(self.FL_PWM, 1000); self.pwm_fl.start(0)
-        self.pwm_fr = GPIO.PWM(self.FR_PWM, 1000); self.pwm_fr.start(0)
-        self.pwm_rl = GPIO.PWM(self.RL_PWM, 1000); self.pwm_rl.start(0)
-        self.pwm_rr = GPIO.PWM(self.RR_PWM, 1000); self.pwm_rr.start(0)
+        # 앞/뒤 오른쪽 모터 제어
+        self.set_motor(self.front_right_pwm, self.front_right_in1, self.front_right_in2, right_speed)
+        self.set_motor(self.back_right_pwm, self.back_right_in1, self.back_right_in2, right_speed)
 
-        self.get_logger().info('✅ 모터 자가 진단 시작!')
-        self.run_self_test()
-
-    def run_self_test(self):
-        motors = [(self.pwm_fl, self.FL_IN1, self.FL_IN2), (self.pwm_fr, self.FR_IN1, self.FR_IN2),
-                  (self.pwm_rl, self.RL_IN1, self.RL_IN2), (self.pwm_rr, self.RR_IN1, self.RR_IN2)]
-        for pwm, in1, in2 in motors:
-            GPIO.output(in1, True); pwm.ChangeDutyCycle(30); time.sleep(0.5)
-            pwm.ChangeDutyCycle(0); GPIO.output(in1, False); time.sleep(0.2)
-        self.get_logger().info('✨ 자가 진단 완료.')
-
-    def cmd_vel_callback(self, msg):
-        vx, vy, wz = msg.linear.x, msg.linear.y, msg.angular.z
-        speeds = [vx-vy-wz, vx+vy+wz, vx+vy-wz, vx-vy+wz]
-        motors = [(self.pwm_fl, self.FL_IN1, self.FL_IN2), (self.pwm_fr, self.FR_IN1, self.FR_IN2),
-                  (self.pwm_rl, self.RL_IN1, self.RL_IN2), (self.pwm_rr, self.RR_IN1, self.RR_IN2)]
-        for i, speed in enumerate(speeds):
-            pwm, in1, in2 = motors[i]
-            GPIO.output(in1, speed > 0); GPIO.output(in2, speed < 0)
-            pwm.ChangeDutyCycle(min(abs(speed) * 100, 100))
+    def set_motor(self, pwm_pin, in1, in2, speed):
+        speed = max(min(speed, 1.0), -1.0) # 속도 제한
+        if speed > 0: # 전진
+            in1.on(); in2.off(); pwm_pin.value = speed
+        elif speed < 0: # 후진
+            in1.off(); in2.on(); pwm_pin.value = abs(speed)
+        else: # 정지
+            in1.off(); in2.off(); pwm_pin.value = 0
 
 def main(args=None):
-    rclpy.init(args=args); node = MotorNode()
+    rclpy.init(args=args)
+    node = MotorNode()
     try: rclpy.spin(node)
     except KeyboardInterrupt: pass
-    finally: GPIO.cleanup(); node.destroy_node(); rclpy.shutdown()
+    finally: node.destroy_node(); rclpy.shutdown()

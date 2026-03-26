@@ -10,13 +10,11 @@ class ImuNode(Node):
         self.publisher_ = self.create_publisher(Imu, '/imu/data_raw', 10)
         self.bus = smbus2.SMBus(1)
         self.address = 0x68
-        
         try:
-            self.bus.write_byte_data(self.address, 0x6B, 0) # 깨우기
-            self.get_logger().info('🧭 IMU(MPU6050) 연결 성공!')
-        except:
-            self.get_logger().error('🚨 IMU 연결 실패! 선을 확인하세요.')
-
+            self.bus.write_byte_data(self.address, 0x6B, 0)
+            self.get_logger().info('🧭 IMU 연결 성공!')
+        except Exception as e:
+            self.get_logger().error(f'🚨 IMU 연결 실패: {e}')
         self.timer = self.create_timer(0.05, self.publish_imu)
 
     def read_raw_data(self, addr):
@@ -30,16 +28,14 @@ class ImuNode(Node):
             msg = Imu()
             msg.header.stamp = self.get_clock().now().to_msg()
             msg.header.frame_id = 'imu_link'
-            
             acc_scale, gyro_scale = 16384.0, 131.0
-            msg.linear_acceleration.x = (self.read_raw_data(0x3B) / acc_scale) * 9.8
-            msg.linear_acceleration.y = (self.read_raw_data(0x3D) / acc_scale) * 9.8
-            msg.linear_acceleration.z = (self.read_raw_data(0x3F) / acc_scale) * 9.8
-            
+            msg.linear_acceleration.x = (self.read_raw_data(0x3B) / acc_scale) * 9.80665
+            msg.linear_acceleration.y = (self.read_raw_data(0x3D) / acc_scale) * 9.80665
+            msg.linear_acceleration.z = (self.read_raw_data(0x3F) / acc_scale) * 9.80665
             msg.angular_velocity.x = np.radians(self.read_raw_data(0x43) / gyro_scale)
             msg.angular_velocity.y = np.radians(self.read_raw_data(0x45) / gyro_scale)
             msg.angular_velocity.z = np.radians(self.read_raw_data(0x47) / gyro_scale)
-            
+            msg.orientation.w = 1.0 
             self.publisher_.publish(msg)
         except: pass
 
